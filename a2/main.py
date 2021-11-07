@@ -175,7 +175,7 @@ def compute():
   for i in range(height):
     for j in range(width):
       if imageFT_mags[i][j] >= thresh:
-        gridImageFT[i][j] = imageFT_mags[i][j]
+        gridImageFT[i][j] = imageFT[i][j]
         nzMagList.append((i,j))
 
   # Find (angle, distance) to each peak
@@ -185,6 +185,8 @@ def compute():
   lines = [[1,2],[3,4]]
 
   print( '4. finding angles and distances of grid lines' )
+
+  
 
   # Convert back to spatial domain to get a grid-like image
 
