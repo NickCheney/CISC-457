@@ -53,7 +53,7 @@ translate = (0.0,0.0)           # amount by which to translate images
 # Image
 
 imageDir      = 'images'
-imageFilename = 'ecg-02.png'
+imageFilename = 'ecg-01.png'
 imagePath     = os.path.join( imageDir, imageFilename )
 
 image    = None                 # the image as a 2D np.array
@@ -266,6 +266,7 @@ def compute():
   if resultImage is None:
     resultImage = image.copy()
 
+  
   # angle at which we will look for the next non-grid pixels
   searchAngle = (angle1+angle2)/2
 
@@ -277,37 +278,69 @@ def compute():
   # y component of searchAngle when x component is 1
   y_increment = round(np.tan(searchAngle))
 
+  #define filters Fx and Fy to compute the gradient at each grid point
+  Fx = [[-1,0,1],
+        [-2,0,2],
+        [-1,0,1]]
+
+  Fy = [[1,2,1],
+        [0,0,0],
+        [-1,-2,-1]]
+  
+
   for y in range(height):
     for x in range(width):
       if gridImage[y][x] > 16:
-        # get pixels on opposite sides of the gridline and average them
-        pixel1 = getForwardPixel(x, y, gridImage, resultImage, x_increment, y_increment)
-        pixel2 = getBackwardPixel(x, y, gridImage, resultImage, x_increment, y_increment)
-        resultImage[y][x] = (pixel1+pixel2)/2
+        # get gradient direction at gridline pixel
+
+        Gx = getGradient(gridImage, x, y, Fx)
+        Gy = getGradient(gridImage, x, y, Fy)
+        grad_dir = (math.atan2(Gy,Gx) / (2*math.pi)) * 360
+        
+        #get pixels on either side
+        p1 = getPixel(x, y, gridImage, image, grad_dir)
+        p2 = getPixel(x, y, gridImage, image, grad_dir + math.pi)
+        #add to result image
+        resultImage[y][x] = (p1+p2)/2
 
   print( 'done' )
 
   return resultImage, lines
 
-# getForwardPixel and getBackwardPixel used in part 6 to retrieve pixel values on opposite sides of a grid line
-
-def getForwardPixel(x, y, image1, image2, x_increment, y_increment):
+def getGradient(image, x, y, filt):
+  #computes the gradient direction at a particular point
   height = image.shape[0]
-  width  = image.shape[1]
-  for k in range(min(height-y, width-x)):
-    if (image1[y + k*y_increment][x + k*x_increment] < 16):
-      nextPixel = image2[y + k*y_increment][x + k*x_increment]
-      return nextPixel
-  return 0
+  width = image.shape[1]
+  #get filter dimensions
+  fh = len(filt)
+  fw = len(filt[0])
+  grad = 0
+  for i in range(fh):
+    for j in range(fw):
+      #get required pixel coords
+      ix = x - fw // 2 + j
+      iy = y - fh // 2 + i
+      if ix < 0 or ix >= width or iy < 0 or iy >= height:
+        continue
+      else:
+        grad += image[iy][ix] * filt[i][j]
+  return grad
 
-def getBackwardPixel(x, y, image1, image2, x_increment, y_increment):
+def getPixel(x, y, grid, orig, angle):
   height = image.shape[0]
-  width  = image.shape[1]
-  for k in range(min(y, x)):
-    if (image1[y - k*y_increment][x - k*x_increment] < 16):
-      nextPixel = image2[y - k*y_increment][x - k*x_increment]
-      return nextPixel
+  width = image.shape[1]
+  angle_rad = angle * math.pi / 180
+  for d in range(5):
+    xdelt = round(d * math.cos(angle_rad))
+    ydelt = round(d * math.sin(angle_rad))
+    xprime = x + xdelt
+    yprime = y + ydelt
+    if xprime < 0 or xprime >= width or yprime < 0 or yprime >= height:
+      return 0
+    elif grid[yprime][xprime] <= 16:
+      return orig[yprime][xprime]
   return 0
+    
       
 
 # File dialog
