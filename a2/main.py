@@ -53,7 +53,7 @@ translate = (0.0,0.0)           # amount by which to translate images
 # Image
 
 imageDir      = 'images'
-imageFilename = 'small.png'
+imageFilename = 'ecg-01.png'
 imagePath     = os.path.join( imageDir, imageFilename )
 
 image    = None                 # the image as a 2D np.array
@@ -154,12 +154,11 @@ def compute():
   imageFT_mags = np.absolute(imageFT)
   #store dc component
   dc = imageFT_mags[0][0]
-  #set dc component to 0 temporarily
+  #set dc component to 0 temporarily (see step 3)
   imageFT_mags[0][0] = 0
   #get max magnitude
   maxMag = imageFT_mags.max()
-  #restore dc component
-  imageFT_mags[0][0] = dc
+  
   
   # Zero the components that are less than 40% of the max
 
@@ -172,20 +171,72 @@ def compute():
 
   nzMagList = []
 
-  for i in range(height):
-    for j in range(width):
-      if imageFT_mags[i][j] >= thresh:
-        gridImageFT[i][j] = imageFT[i][j]
-        nzMagList.append((i,j))
+  for y in range(height):
+    for x in range(width):
+      if imageFT_mags[y][x] >= thresh:
+        gridImageFT[y][x] = imageFT[y][x]
+        nzMagList.append([x,y])
+
+  #restore dc component
+  imageFT_mags[0][0] = dc
+  #and set for the FT grid image
+  gridImageFT[0][0] = dc
 
   # Find (angle, distance) to each peak
   #
   # lines = [ (angle1,distance1), (angle2,distance2) ]
-
-  lines = [[1,2],[3,4]]
-
+  
   print( '4. finding angles and distances of grid lines' )
+  
+  for i in range(len(nzMagList)):
+    
+    if nzMagList[i][1] >= height / 2:
+      nzMagList[i][1] -= height
+      
+      if nzMagList[i][0] >= width / 2:
+        nzMagList[i][0] -= width
+        
+    elif nzMagList[i][0] >= width / 2:
+      nzMagList[i][0] -= width
 
+  ratio = width / height
+  u1, v1 = nzMagList[0]
+
+  line1_angles = [math.atan2(v1*ratio,u1)]
+  line1_dists = []
+  line2_angles = []
+  line2_dists = []
+
+  for i in range(1,len(nzMagList)):
+    u,v = nzMagList[i]
+    angle = math.atan2(v*ratio,u)
+    dist = math.sqrt(u**2+v**2)
+    #too close to origin to be a gridline
+    if dist < 10:
+      continue
+    if angle < 0:
+      angle += math.pi
+    elif angle > 3.14:
+      angle -= math.pi
+    if abs(line1_angles[0] - angle) < math.pi/4:
+      line1_angles.append(angle)
+      line1_dists.append(dist)
+    else:
+      line2_angles.append(angle)
+      line2_dists.append(dist)
+
+  print(line1_angles)
+  print(line1_dists)
+  print(line2_angles)
+  print(line2_dists)
+
+  angle1 = (sum(line1_angles)/len(line1_angles))/(2*math.pi)*360
+  angle2 = (sum(line2_angles)/len(line2_angles))/(2*math.pi)*360
+  dist1 = min(line1_dists)
+  dist2 = min(line2_dists)
+
+  lines = [(angle1,dist1),(angle2,dist2)]    
+  
   
 
   # Convert back to spatial domain to get a grid-like image
