@@ -53,7 +53,7 @@ translate = (0.0,0.0)           # amount by which to translate images
 # Image
 
 imageDir      = 'images'
-imageFilename = 'ecg-01.png'
+imageFilename = 'ecg-02.png'
 imagePath     = os.path.join( imageDir, imageFilename )
 
 image    = None                 # the image as a 2D np.array
@@ -167,13 +167,16 @@ def compute():
   if gridImageFT is None:
     gridImageFT = np.zeros( (height,width), dtype=np.complex_ )
 
+  #get intensity threshold
   thresh = 0.4 * maxMag
 
+  #list of non-zero magitude coordinates
   nzMagList = []
 
   for y in range(height):
     for x in range(width):
       if imageFT_mags[y][x] >= thresh:
+        #copy non-zero magnitudes to FT grid image
         gridImageFT[y][x] = imageFT[y][x]
         nzMagList.append([x,y])
 
@@ -189,7 +192,7 @@ def compute():
   print( '4. finding angles and distances of grid lines' )
   
   for i in range(len(nzMagList)):
-    
+    #correct coordinates to match fft quadrants
     if nzMagList[i][1] >= height / 2:
       nzMagList[i][1] -= height
       
@@ -199,39 +202,46 @@ def compute():
     elif nzMagList[i][0] >= width / 2:
       nzMagList[i][0] -= width
 
+  #get normalization ratio
   ratio = width / height
+  #get first non-zero magnitude coordinate pair
   u1, v1 = nzMagList[0]
-
+  #get its angle
   line1_angles = [math.atan2(v1*ratio,u1)]
   line1_dists = []
   line2_angles = []
   line2_dists = []
 
   for i in range(1,len(nzMagList)):
+    #iterate through all other coordinates
     u,v = nzMagList[i]
+    #compute angle and distance from origin
     angle = math.atan2(v*ratio,u)
     dist = math.sqrt(u**2+v**2)
-    #too close to origin to be a gridline
-    if dist < 10:
+    
+    if dist <= 6:
+      #too close to origin to be a gridline, skip
       continue
     if angle < 0:
+      #correct angle to be positive
       angle += math.pi
     elif angle > 3.14:
+      #correct angle to zero
       angle -= math.pi
     if abs(line1_angles[0] - angle) < math.pi/4:
+      #angle clustered with the first (u,v) pair
+      #less than 45 degrees or pi/4 rad difference
       line1_angles.append(angle)
       line1_dists.append(dist)
     else:
+      #otherwise part of the second grid line
       line2_angles.append(angle)
       line2_dists.append(dist)
 
-  print(line1_angles)
-  print(line1_dists)
-  print(line2_angles)
-  print(line2_dists)
-
+  #compute grid line angles in degrees
   angle1 = (sum(line1_angles)/len(line1_angles))/(2*math.pi)*360
   angle2 = (sum(line2_angles)/len(line2_angles))/(2*math.pi)*360
+  #compute grid line distances
   dist1 = min(line1_dists)
   dist2 = min(line2_dists)
 
@@ -256,16 +266,48 @@ def compute():
   if resultImage is None:
     resultImage = image.copy()
 
-  for i in range(height):
-    for j in range(width):
-      if gridImage[i][j] > 16:
-        resultImage[i][j] = 0
+  # angle at which we will look for the next non-grid pixels
+  searchAngle = (angle1+angle2)/2
+
+  # x increment at which we will look for the next non-grid pixels
+  # x component of searchAngle
+  x_increment = 1
+
+  # y increment at which we will look for the next non-grid pixels
+  # y component of searchAngle when x component is 1
+  y_increment = round(np.tan(searchAngle))
+
+  for y in range(height):
+    for x in range(width):
+      if gridImage[y][x] > 16:
+        # get pixels on opposite sides of the gridline and average them
+        pixel1 = getForwardPixel(x, y, gridImage, resultImage, x_increment, y_increment)
+        pixel2 = getBackwardPixel(x, y, gridImage, resultImage, x_increment, y_increment)
+        resultImage[y][x] = (pixel1+pixel2)/2
 
   print( 'done' )
 
   return resultImage, lines
 
+# getForwardPixel and getBackwardPixel used in part 6 to retrieve pixel values on opposite sides of a grid line
 
+def getForwardPixel(x, y, image1, image2, x_increment, y_increment):
+  height = image.shape[0]
+  width  = image.shape[1]
+  for k in range(min(height-y, width-x)):
+    if (image1[y + k*y_increment][x + k*x_increment] < 16):
+      nextPixel = image2[y + k*y_increment][x + k*x_increment]
+      return nextPixel
+  return 0
+
+def getBackwardPixel(x, y, image1, image2, x_increment, y_increment):
+  height = image.shape[0]
+  width  = image.shape[1]
+  for k in range(min(y, x)):
+    if (image1[y - k*y_increment][x - k*x_increment] < 16):
+      nextPixel = image2[y - k*y_increment][x - k*x_increment]
+      return nextPixel
+  return 0
       
 
 # File dialog
