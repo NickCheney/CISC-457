@@ -37,9 +37,9 @@ except:
 
 
 # Globals
-
-windowWidth  = 1000 # window dimensions (not image dimensions)
-windowHeight =  800
+x = 2
+windowWidth  = 1000*x # window dimensions (not image dimensions)
+windowHeight =  800*x
 
 showMagnitude = True            # for the FT, show the magnitude.  Otherwise, show the phase
 doHistoEq = False               # do histogram equalization on the FT to make features more obvious
@@ -53,7 +53,7 @@ translate = (0.0,0.0)           # amount by which to translate images
 # Image
 
 imageDir      = 'images'
-imageFilename = 'ecg-01.png'
+imageFilename = 'small.png'
 imagePath     = os.path.join( imageDir, imageFilename )
 
 image    = None                 # the image as a 2D np.array
@@ -266,18 +266,6 @@ def compute():
   if resultImage is None:
     resultImage = image.copy()
 
-  
-  # angle at which we will look for the next non-grid pixels
-  searchAngle = (angle1+angle2)/2
-
-  # x increment at which we will look for the next non-grid pixels
-  # x component of searchAngle
-  x_increment = 1
-
-  # y increment at which we will look for the next non-grid pixels
-  # y component of searchAngle when x component is 1
-  y_increment = round(np.tan(searchAngle))
-
   #define filters Fx and Fy to compute the gradient at each grid point
   Fx = [[-1,0,1],
         [-2,0,2],
@@ -286,20 +274,57 @@ def compute():
   Fy = [[1,2,1],
         [0,0,0],
         [-1,-2,-1]]
-  
+
+  #define smoothing filter
+  G3 = [[1/16,2/16,1/16],
+        [2/16,4/16,2/16],
+        [1/16,2/16,1/16]]
+
+  G5 = [[1,4,6,4,1],
+        [4,16,24,16,4],
+        [6,24,36,24,6],
+        [4,16,24,16,4],
+        [1,4,6,4,1]]
+
+  for i in range(5):
+    for j in range(5):
+      G5[i][j] /= 256
+
+  smoothGrid = gridImage
+
+  for y in range(height):
+    for x in range(width):
+      smoothGrid[y][x] = applyFilter(gridImage, x, y, G5)
 
   for y in range(height):
     for x in range(width):
       if gridImage[y][x] > 16:
         # get gradient direction at gridline pixel
 
-        Gx = getGradient(gridImage, x, y, Fx)
-        Gy = getGradient(gridImage, x, y, Fy)
+        Gx = applyFilter(smoothGrid, x, y, Fx)
+        Gy = applyFilter(smoothGrid, x, y, Fy)
         grad_dir = (math.atan2(Gy,Gx) / (2*math.pi)) * 360
+
+
+        a1diff = abs(angle1-grad_dir)
+        a2diff = abs(angle2-grad_dir)
+
+        if a1diff > 180:
+          a1diff -= 180
+        if a2diff > 180:
+          a2diff -= 180
+
+        if abs(a1diff - 90) < abs(a2diff - 90):
+          p1 = getPixel(x, y, gridImage, image, angle1)
+          p2 = getPixel(x, y, gridImage, image, angle1 + 180)
+        else:
+          p1 = getPixel(x, y, gridImage, image, angle2)
+          p2 = getPixel(x, y, gridImage, image, angle2 + 180)
         
         #get pixels on either side
-        p1 = getPixel(x, y, gridImage, image, grad_dir)
-        p2 = getPixel(x, y, gridImage, image, grad_dir + math.pi)
+        #note: grid image has relatively little noise so smoothing was
+        #skipped
+        
         #add to result image
         resultImage[y][x] = (p1+p2)/2
 
@@ -307,35 +332,38 @@ def compute():
 
   return resultImage, lines
 
-def getGradient(image, x, y, filt):
-  #computes the gradient direction at a particular point
+def applyFilter(image, x, y, filt):
+  #computes the filter value at a particular point
   height = image.shape[0]
   width = image.shape[1]
   #get filter dimensions
   fh = len(filt)
   fw = len(filt[0])
-  grad = 0
+  val = 0
   for i in range(fh):
     for j in range(fw):
       #get required pixel coords
       ix = x - fw // 2 + j
       iy = y - fh // 2 + i
       if ix < 0 or ix >= width or iy < 0 or iy >= height:
+        #out of bounds, use 0 as val
         continue
       else:
-        grad += image[iy][ix] * filt[i][j]
-  return grad
+        val += image[iy][ix] * filt[i][j]
+  return val
 
 def getPixel(x, y, grid, orig, angle):
   height = image.shape[0]
   width = image.shape[1]
   angle_rad = angle * math.pi / 180
   for d in range(5):
+    #use angle and distance to find coords
     xdelt = round(d * math.cos(angle_rad))
     ydelt = round(d * math.sin(angle_rad))
     xprime = x + xdelt
     yprime = y + ydelt
     if xprime < 0 or xprime >= width or yprime < 0 or yprime >= height:
+      #out of bounds, return 0
       return 0
     elif grid[yprime][xprime] <= 16:
       return orig[yprime][xprime]
