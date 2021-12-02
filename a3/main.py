@@ -85,7 +85,7 @@ def compress( inputFile, outputFile ):
                     if y == 0:
                         sym = struct.pack('>h', int(img[y,x,c]))
                     else:
-                        sym = struct.pack('>h', int(img[y,x,c] - img[y-1,x,c]))
+                        sym = struct.pack('>h', int(img[y,x,c]) - int(img[y-1,x,c]))
 
                     #LZW encoding
                     if (s+sym) in lzw_dict:
@@ -108,7 +108,7 @@ def compress( inputFile, outputFile ):
                 if y == 0:
                     sym = struct.pack('>h', int(img[y,x]))
                 else:
-                    sym = struct.pack('>h', int(img[y,x] - img[y-1,x]))
+                    sym = struct.pack('>h', int(img[y,x]) - int(img[y-1,x]))
 
                 #LZW encoding
                 if (s+sym) in lzw_dict:
