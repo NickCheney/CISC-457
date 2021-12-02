@@ -64,12 +64,65 @@ def compress( inputFile, outputFile ):
 
     startTime = time.time()
  
-    outputBytes = bytearray()
+    outputIndices = bytearray()
 
-    for y in range(img.shape[0]):
-        for x in range(img.shape[1]):
-            for c in range(img.shape[2]):
-                outputBytes.append( img[y,x,c] )
+    #initialize empty dict for a channel's LZW encoding
+    lzw_dict = {struct.pack('>h',i) : i + 255 for i in range(-255,256)}
+
+    #initialize empty symbol sequence
+    s = b''
+
+    #flag for later output
+    multi_channel = len(img.shape) == 3
+
+    if multi_channel:
+        #a 3-tuple shape implies multiple channels
+        
+        for y in range(img.shape[0]):
+            for x in range(img.shape[1]):
+                for c in range(img.shape[2]):
+                    #use predictive coding to get difference from previous pixel
+                    if y == 0:
+                        sym = struct.pack('>h', int(img[y,x,c]))
+                    else:
+                        sym = struct.pack('>h', int(img[y,x,c] - img[y-1,x,c]))
+
+                    #LZW encoding
+                    if (s+sym) in lzw_dict:
+                        s += sym
+                    else:
+                        outputIndices += struct.pack('>H', lzw_dict[s])
+                        if len(lzw_dict) < 65536:
+                            lzw_dict[s+sym] = len(lzw_dict)
+                        s = sym
+            
+        outputIndices += struct.pack('>H', lzw_dict[s])
+
+                    
+    else:
+        #there is a single channel
+            
+        for y in range(img.shape[0]):
+            for x in range(img.shape[1]):
+                #use predictive coding to get difference from previous pixel
+                if y == 0:
+                    sym = struct.pack('>h', int(img[y,x]))
+                else:
+                    sym = struct.pack('>h', int(img[y,x] - img[y-1,x]))
+
+                #LZW encoding
+                if (s+sym) in lzw_dict:
+                    s += sym
+                else:
+                    outputIndices += struct.pack('>H', lzw_dict[s])
+                    if len(lzw_dict) < 65536:
+                        lzw_dict[s+sym] = len(lzw_dict)
+                    s = sym
+        
+        outputIndices += struct.pack('>H', lzw_dict[s])
+
+    #encode the final index list
+    #outputIndices = str(outputIndices).encode()
 
     endTime = time.time()
 
@@ -80,13 +133,19 @@ def compress( inputFile, outputFile ):
     # reconstructed.
 
     outputFile.write( ('%s\n' % headerText).encode() )
-    outputFile.write( ('%d %d %d\n' % (img.shape[0], img.shape[1], img.shape[2])).encode() )
-    outputFile.write( outputBytes )
+    if multi_channel:
+        outputFile.write( ('%d %d %d\n' % (img.shape[0], img.shape[1], img.shape[2])).encode() )
+    else:
+        outputFile.write( ('%d %d\n' % (img.shape[0], img.shape[1])).encode() )
+    outputFile.write( outputIndices )
 
     # Print information about the compression
-    
-    inSize  = img.shape[0] * img.shape[1] * img.shape[2]
-    outSize = len(outputBytes)
+
+    if multi_channel:
+        inSize  = img.shape[0] * img.shape[1] * img.shape[2]
+    else:
+        inSize = img.shape[0] * img.shape[1]
+    outSize = len(outputIndices)
 
     sys.stderr.write( 'Input size:         %d bytes\n' % inSize )
     sys.stderr.write( 'Output size:        %d bytes\n' % outSize )
