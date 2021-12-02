@@ -121,8 +121,8 @@ def compress( inputFile, outputFile ):
                         #no previous pixel so use original value
                         sym = struct.pack('>h', int(img[y,x]))
                     else:
-                    #use difference between current and previous pixel
-                    sym = struct.pack('>h', int(img[y,x]) - int(img[y-1,-1]))
+                        #diff with pixel from last col of previous row
+                        sym = struct.pack('>h', int(img[y,x]) - int(img[y-1,-1]))
                 else:
                     #diff with pixel from previous col
                     sym = struct.pack('>h', int(img[y,x]) - int(img[y,x-1]))
@@ -210,8 +210,9 @@ def uncompress( inputFile, outputFile ):
 
     s = decode_dict[inputIndices[0]]
 
-    #start building a list of pixels to add to output image
-    img[0][0][0] = struct.unpack('>h', s)
+    '''#start building a list of pixels to add to output image
+    img[0][0][0] = struct.unpack('>h', s)[0]'''
+    outPix = [struct.unpack('>h', s)[0]]
 
     #pixel # in output image
     pN = 1
@@ -225,42 +226,41 @@ def uncompress( inputFile, outputFile ):
             t = s + s[0:2]
             decode_dict[len(decode_dict)] = t
 
+        #add t to the image being constructed
         for i in range(0, len(t), 2):
+            '''
             y = pN // (columns*numChannels)
             x = (pN - y*columns*numChannels) // numChannels
             c = pN % numChannels
 
-            if x == 0:
-                #start of a row, use a plain value
-                img[y][x][c] = struct.unpack('>h',t[i:i+2])
+            #reverse the predictive encoding from compression to get correct
+            #pixel value
+
+            if c == 0:
+                if x == 0:                      
+                    #diff with last col and channel of previous row
+                    img[y][x][c] = img[y-1][-1][-1] + struct.unpack('>h',t[i:i+2])[0]
+                else:
+                    #diff with pixel from previous col last channel
+                    img[y][x][c] = img[y][x-1][-1] + struct.unpack('>h',t[i:i+2])[0]
             else:
-                #otherwise, use previous value
-                img[y][x][c] = None
+                #diff with pixel in previous channel
+                img[y][x][c] = img[y][x][c-1] + struct.unpack('>h',t[i:i+2])[0]
+                
+            pN += 1'''
+            outPix.append(struct.unpack('>h',t[i:i+2])[0]+outPix[-1])
                 
         s = t
-    
+
+    endTime = time.time()
+    i = 0
     for y in range(rows):
         for x in range(columns):
             for c in range(numChannels):
-
-                #already got the first index
-                if y == 0 and x == 0 and c == 0:
-                    continue
-
-                if ndx in decode_dict:
-                    t = decode_dict[ndx]
-                    decode_dict[len(decode_dict)] = s + t[0:2]
-                else:
-                    t = s + s[0:2]
-                    decode_dict[len(decode_dict)] = t
-
-                if y == 0:
-                    #start of a column, use plain value
-                    img[y][x][c] = struct.unpack('>h',t)
-                s = t
+                img[y][x][c] = outPix[i]
                 i+=1
 
-    endTime = time.time()
+    '''endTime = time.time()'''
     sys.stderr.write( 'Uncompression time %.2f seconds\n' % (endTime - startTime) )
 
     # Output the image
